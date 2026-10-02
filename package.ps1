@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2026 Kiril Tsanov (KikoTs)
 # Package an already-built dist/ into the release assets in out/:
-#   AOSPatches-<version>.zip, AOSPatches.zip (same bytes), install.ps1, SHA256SUMS
+#   AOSPatches-<version>.zip, AOSPatches.zip (same bytes), install.ps1,
+#   AOSPatches-Installer.cmd, SHA256SUMS
 # Source, docs and intermediates are never included. Entries use a fixed order
 # and timestamp, so the same dist/ always produces the same ZIP bytes.
 [CmdletBinding()]
@@ -66,7 +67,13 @@ try {
 
 Copy-Item -LiteralPath $versioned -Destination (Join-Path $out 'AOSPatches.zip')
 Copy-Item -LiteralPath (Join-Path $root 'install.ps1') -Destination (Join-Path $out 'install.ps1')
-$sums = foreach ($name in @("AOSPatches-$Version.zip", 'AOSPatches.zip', 'install.ps1')) {
+# The double-click installer must be plain ASCII with CRLF line endings for cmd.exe,
+# whatever line endings the checkout used.
+$cmdBytes = [IO.File]::ReadAllBytes((Join-Path $root 'AOSPatches-Installer.cmd'))
+if ($cmdBytes | Where-Object { $_ -gt 127 }) { throw 'AOSPatches-Installer.cmd must be ASCII only.' }
+$cmdText = ([Text.Encoding]::ASCII.GetString($cmdBytes) -replace "`r`n", "`n") -replace "`n", "`r`n"
+[IO.File]::WriteAllText((Join-Path $out 'AOSPatches-Installer.cmd'), $cmdText, [Text.Encoding]::ASCII)
+$sums = foreach ($name in @("AOSPatches-$Version.zip", 'AOSPatches.zip', 'install.ps1', 'AOSPatches-Installer.cmd')) {
     '{0}  {1}' -f (Get-FileHash -LiteralPath (Join-Path $out $name) -Algorithm SHA256).Hash.ToLowerInvariant(), $name
 }
 [IO.File]::WriteAllText((Join-Path $out 'SHA256SUMS'), (($sums -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))

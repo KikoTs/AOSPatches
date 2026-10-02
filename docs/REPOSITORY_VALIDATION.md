@@ -46,6 +46,13 @@ copy with its own Git repository and build scripts.
   `-Uninstall`, every file and folder of the copy matched the pre-install
   snapshot byte for byte. An unwritable folder is detected and elevation is
   only offered, never forced.
+- 1.1.0: `AOSPatches-Installer.cmd` with the fixes-only `install.ps1` was run
+  against a fresh copy of the game in a folder whose path has spaces and
+  Cyrillic letters, with the folder passed both as `AOSPATCHES_GAMEDIR` and as
+  a forwarded `-GameDir` argument: install (9 replaced, 1 identical), then
+  uninstall from the update/uninstall menu; all 15,246 files and every folder
+  matched the pre-install snapshot byte for byte. Declining the question exits
+  with code 2 and changes nothing.
 
 Two-account Internet SDR gameplay and full retail UI validation remain
 outstanding as described in [NETWORK_VALIDATION.md](NETWORK_VALIDATION.md).

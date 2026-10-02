@@ -10,7 +10,8 @@ player-hosted BattleSpades servers.
 - **Changes nothing permanently:** the game's EXE, PKG, PYD and Steam DLLs stay
   untouched. Every patch can be switched off on its own.
 - **Download:** [latest release](https://github.com/KikoTs/AOSPatches/releases/latest)
-  ([`AOSPatches.zip`](https://github.com/KikoTs/AOSPatches/releases/latest/download/AOSPatches.zip),
+  ([`AOSPatches-Installer.cmd`](https://github.com/KikoTs/AOSPatches/releases/latest/download/AOSPatches-Installer.cmd),
+  [`AOSPatches.zip`](https://github.com/KikoTs/AOSPatches/releases/latest/download/AOSPatches.zip),
   [`SHA256SUMS`](https://github.com/KikoTs/AOSPatches/releases/latest/download/SHA256SUMS)).
   What changed: [CHANGELOG.md](CHANGELOG.md).
 
@@ -26,8 +27,8 @@ player-hosted BattleSpades servers.
 | Loader | `winmm.dll`, `aosfix_runtime.py` | Loads the patches into the game and forwards all WinMM calls to Windows. |
 
 The full list is in [CHANGELOG.md](CHANGELOG.md). Only the original retail
-bundle is supported; with any other `aos.pkg` (for example after installing the
-full AoS Revival client) the Python patches stay off. Supported `aos.pkg` SHA-256:
+bundle is supported; with any other `aos.pkg` (for example after installing
+another mod) the Python patches stay off. Supported `aos.pkg` SHA-256:
 
 ```text
 c0d0cdc6f61f4b58172f74faf036c6f323b1cdbe59193f595fcce7d2a524e52c
@@ -35,29 +36,41 @@ c0d0cdc6f61f4b58172f74faf036c6f323b1cdbe59193f595fcce7d2a524e52c
 
 ## Install
 
-### Automatic (recommended)
+### One click (recommended)
 
-Close the game, open **PowerShell** (Start menu, type `powershell`) and run:
+1. Download [`AOSPatches-Installer.cmd`](https://github.com/KikoTs/AOSPatches/releases/latest/download/AOSPatches-Installer.cmd).
+2. Close the game and double-click the file. If Windows says it protected your
+   PC, choose **More info** > **Run anyway** (it is a downloaded script).
+3. Press **Enter** to confirm. When the window says **SUCCESS**, start Ace of
+   Spades from Steam as usual.
 
-```powershell
-irm https://github.com/KikoTs/AOSPatches/releases/latest/download/install.ps1 | iex
-```
+The `.cmd` file downloads `install.ps1` from the latest release over HTTPS,
+runs it with Windows PowerShell and keeps the window open so you can read the
+result. Run it again later to update or uninstall.
 
 The installer:
 
 1. finds your Steam library and the Ace of Spades folder (or asks for it);
-2. asks what to install: **AOSPatches fixes only** (this repository, under 1 MB)
-   or the **full AoS Revival client** (from
-   [aceofspades_revival](https://github.com/KikoTs/aceofspades_revival/releases/latest), about 380 MB);
+2. asks once before changing anything;
 3. waits for the game to close if it is running;
 4. downloads the latest release and checks its SHA-256 against the release's
    checksum file;
 5. backs up every file it replaces into `AOSPatches-Backup\<date-time>\` in the
    game folder, then copies the new files in.
 
-It runs on the Windows PowerShell 5.1 that ships with Windows and needs no
-administrator rights unless your game folder is not writable; it then explains
-why and relaunches as administrator only if you agree.
+On a game that already has AOSPatches it offers **update** (Enter),
+**uninstall** (U) or **quit** (Q). It runs on the Windows PowerShell 5.1 that
+ships with Windows and needs no administrator rights unless your game folder is
+not writable; it then explains why and relaunches as administrator only if you
+agree.
+
+### PowerShell one-liner
+
+Close the game, open **PowerShell** (Start menu, type `powershell`) and run:
+
+```powershell
+irm https://github.com/KikoTs/AOSPatches/releases/latest/download/install.ps1 | iex
+```
 
 Prefer to read the script first? Download, inspect, then run it:
 
@@ -67,16 +80,17 @@ notepad install.ps1
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-Options (with the downloaded file, or with the one-liner as
-`& ([scriptblock]::Create((irm <url>))) <options>`):
+Options (with the downloaded file, after `AOSPatches-Installer.cmd`, or with
+the one-liner as `& ([scriptblock]::Create((irm <url>))) <options>`):
 
 | Option | Meaning |
 | --- | --- |
-| `-Product Fixes` / `-Product Revival` | Skip the question. |
-| `-GameDir "D:\Steam\steamapps\common\aceofspades"` | Use this folder instead of searching. |
+| `-GameDir "D:\Steam\steamapps\common\aceofspades"` | Use this folder instead of searching (or set `AOSPATCHES_GAMEDIR`). |
 | `-Uninstall` | Restore the backup and remove what the install added. |
-| `-Yes` | Accept the default answer to every question. |
+| `-Yes` | Do not ask; install (or update) straight away. |
 | `-PackagePath <zip> -ChecksumPath <SHA256SUMS>` | Install a ZIP you already downloaded. |
+
+Exit codes: `0` done, `1` failed, `2` cancelled (nothing changed).
 
 ### Manual
 
@@ -123,7 +137,8 @@ favourites/history live in `%LOCALAPPDATA%\AoSRetailFixes`.
 
 ## Uninstall
 
-- **Installed with the script:** run it again with `-Uninstall`:
+- **Installed with the installer:** double-click `AOSPatches-Installer.cmd`
+  again and press **U**, or run the script with `-Uninstall`:
 
   ```powershell
   & ([scriptblock]::Create((irm https://github.com/KikoTs/AOSPatches/releases/latest/download/install.ps1))) -Uninstall
@@ -134,9 +149,6 @@ favourites/history live in `%LOCALAPPDATA%\AoSRetailFixes`.
 - **Installed by hand:** close the game and delete the ten files listed above
   (and the `relay` folder). Steam's *Verify integrity of game files* does not
   remove them, because they are extra files, not modified game files.
-- **Full AoS Revival client:** use `-Uninstall`, or in Steam right-click
-  **Ace of Spades** > **Properties** > **Installed Files** > **Verify integrity
-  of game files** to get the original game files back.
 
 ## Build
 
@@ -157,8 +169,8 @@ the Steam relay (no Steamworks SDK needed):
 
 `build.ps1` compiles into ignored `build/`, writes the runtime files to `dist/`
 and runs `package.ps1`, which writes the release assets to `out/`:
-`AOSPatches-<version>.zip`, `AOSPatches.zip` (same bytes), `install.ps1` and
-`SHA256SUMS`. None of these are committed. Builds are deterministic: the same
+`AOSPatches-<version>.zip`, `AOSPatches.zip` (same bytes), `install.ps1`,
+`AOSPatches-Installer.cmd` and `SHA256SUMS`. None of these are committed. Builds are deterministic: the same
 source revision, toolchain and SDK give the same bytes. The release workflow
 uses the same pinned Steamworks SDK archive as the BattleSpades C++ client.
 See [docs/BUILDING.md](docs/BUILDING.md) for tests and checks.
@@ -188,6 +200,7 @@ licenses/       retained third-party license texts
 build.ps1       build dist/ from source, then package
 package.ps1     package dist/ into the release assets in out/
 install.ps1     automated installer/uninstaller (also attached to each release)
+AOSPatches-Installer.cmd  double-click wrapper that downloads and runs install.ps1
 ```
 
 ## Hosting

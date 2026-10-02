@@ -4,6 +4,28 @@ All notable changes to AOSPatches. Versions follow [Semantic Versioning](https:/
 Each release on the [releases page](https://github.com/KikoTs/AOSPatches/releases)
 uses its section below as the release notes.
 
+## [1.1.0] - 2026-10-02
+
+The game patches are unchanged; this release makes installing simpler.
+
+### Distribution
+
+- New one-click installer: `AOSPatches-Installer.cmd`. Download it, double-click
+  it, press Enter. It fetches `install.ps1` from the latest release over HTTPS,
+  runs it with Windows PowerShell and keeps the window open with a clear
+  SUCCESS, Cancelled or FAILED message. Folders with spaces or non-English
+  letters work. Stable link:
+  `https://github.com/KikoTs/AOSPatches/releases/latest/download/AOSPatches-Installer.cmd`.
+- `install.ps1` installs AOSPatches only. The option to install the full AoS
+  Revival client is gone; that client is deprecated.
+- Fewer questions: the game folder is found automatically and the installer asks
+  once before changing anything. It waits for a running game to close without
+  asking, and no longer asks about Steam.
+- Running the installer on a patched game offers update, uninstall or quit.
+- The game folder can also come from the `AOSPATCHES_GAMEDIR` environment
+  variable. Exit codes: `0` done, `1` failed, `2` cancelled.
+- `-Product` is no longer needed; `-Product Fixes` is still accepted.
+
 ## [1.0.0] - 2026-10-02
 
 First tagged release. It packages the retail patches that were first published as
@@ -125,4 +147,5 @@ Python patches switched off and the game unchanged.
 - Build output (`dist/`, `AOSPatches.zip`) is no longer committed to the
   repository. Builds are deterministic (`/Brepro`, fixed ZIP order and timestamps).
 
+[1.1.0]: https://github.com/KikoTs/AOSPatches/releases/tag/v1.1.0
 [1.0.0]: https://github.com/KikoTs/AOSPatches/releases/tag/v1.0.0

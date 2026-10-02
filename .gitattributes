@@ -11,3 +11,4 @@ LICENSE text eol=lf
 *.dll binary
 *.exe binary
 *.zip binary
+*.cmd text eol=crlf

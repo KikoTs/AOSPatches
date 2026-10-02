@@ -2,14 +2,18 @@
 # Copyright (c) 2026 Kiril Tsanov (KikoTs)
 <#
 .SYNOPSIS
-    Installs or removes AOSPatches (or the full AoS Revival client) for the
-    original Steam Ace of Spades (app 224540).
+    Installs or removes AOSPatches for the original Steam Ace of Spades
+    (app 224540).
 
 .DESCRIPTION
-    Finds the Steam game folder, downloads the latest release, checks its
-    SHA-256 against the release's checksum file, backs up every file it will
-    replace, then copies the new files in. -Uninstall puts every replaced file
-    back and deletes the files the install added.
+    Finds the Steam game folder, asks once before changing anything, downloads
+    the latest release, checks its SHA-256 against the release's checksum file,
+    backs up every file it will replace, then copies the new files in.
+    -Uninstall puts every replaced file back and deletes the files the install
+    added. Run again on a patched game, it offers update or uninstall.
+
+    Easiest: download AOSPatches-Installer.cmd from the latest release and
+    double-click it. It downloads and runs this script.
 
     One-line install (Windows PowerShell 5.1 or newer):
         irm https://github.com/KikoTs/AOSPatches/releases/latest/download/install.ps1 | iex
@@ -19,12 +23,8 @@
 
 .PARAMETER GameDir
     The Ace of Spades folder (the one containing aos.exe). Found automatically
-    from Steam when omitted.
-
-.PARAMETER Product
-    Fixes   = AOSPatches fixes only (small; the original game stays intact).
-    Revival = the full AoS Revival client from KikoTs/aceofspades_revival.
-    Asked interactively when omitted.
+    from Steam when omitted. The AOSPATCHES_GAMEDIR environment variable is
+    used when this is not given.
 
 .PARAMETER Uninstall
     Restore the backup made by the last install and remove what it added.
@@ -41,13 +41,16 @@
 [CmdletBinding()]
 param(
     [string]$GameDir,
-    [ValidateSet('', 'Fixes', 'Revival')]
-    [string]$Product = '',
     [switch]$Uninstall,
     [switch]$Yes,
     [string]$PackagePath,
     [string]$ChecksumPath,
-    [switch]$PauseAtEnd
+    [switch]$PauseAtEnd,
+    # Accepted for compatibility with 1.0.0 command lines; fixes are the only product now.
+    [ValidateSet('', 'Fixes')]
+    [string]$Product = '',
+    # Internal: the elevated copy skips the question the user already answered.
+    [switch]$Confirmed
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,7 +58,6 @@ $ProgressPreference = 'Continue'
 
 $AppId = 224540
 $PatchesRepo = 'KikoTs/AOSPatches'
-$RevivalRepo = 'KikoTs/aceofspades_revival'
 $PatchesBase = "https://github.com/$PatchesRepo/releases/latest/download"
 $InstallerUrl = "$PatchesBase/install.ps1"
 $StateFolder = 'AOSPatches-Backup'
@@ -159,11 +161,10 @@ function Resolve-GameDir {
     Write-Step 'Looking for Ace of Spades in your Steam libraries'
     $found = Find-GameDir
     if ($found) {
-        Write-Info "Found: $found"
-        if (Read-YesNo 'Use this folder?' $true) { return $found }
-    } else {
-        Write-Warn "Could not find Ace of Spades (Steam app $AppId) automatically."
+        Write-Good 'Found the game.'
+        return $found
     }
+    Write-Warn "Could not find Ace of Spades (Steam app $AppId) automatically."
     if ($Yes) { throw 'No game folder. Run again with -GameDir "C:\path\to\aceofspades".' }
     Write-Info 'In Steam: right-click Ace of Spades > Manage > Browse local files, then copy that folder path.'
     while ($true) {
@@ -186,21 +187,13 @@ $script:SteamAsked = $false
 function Wait-ForClosedGame {
     if ((Get-RunningGame).Count) {
         Write-Warn 'Ace of Spades is running. Its files cannot be changed while it is open.'
-        if (-not (Read-YesNo 'Close the game now and let this script wait for it?' $true)) { throw 'Cancelled: the game is still running.' }
-        Write-Info 'Waiting for Ace of Spades to close (press Ctrl+C to stop)...'
+        Write-Info 'Please close the game. Waiting for it to close (press Ctrl+C to stop)...'
         while ((Get-RunningGame).Count) { Start-Sleep -Seconds 2 }
         Write-Good 'The game is closed.'
     }
     if (-not $script:SteamAsked -and (Get-RunningSteam).Count) {
         $script:SteamAsked = $true
-        Write-Warn 'Steam is running. That is fine as long as Steam is not updating or verifying Ace of Spades right now.'
-        if (-not $Yes) {
-            if (Read-YesNo 'Wait until you have exited Steam before continuing?' $false) {
-                Write-Info 'Waiting for Steam to exit (press Ctrl+C to stop)...'
-                while ((Get-RunningSteam).Count) { Start-Sleep -Seconds 2 }
-                Write-Good 'Steam has exited.'
-            }
-        }
+        Write-Info 'Steam is running. That is fine as long as it is not updating or verifying Ace of Spades right now.'
     }
 }
 
@@ -230,8 +223,8 @@ function Request-Elevation([string]$Dir, [string]$Mode) {
         Write-Info 'Downloading the installer script for the elevated run...'
         Save-Download $InstallerUrl $scriptPath $false
     }
-    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $scriptPath), '-GameDir', ('"{0}"' -f $Dir), '-PauseAtEnd')
-    if ($Mode -eq 'Uninstall') { $arguments += '-Uninstall' } else { $arguments += @('-Product', $Mode) }
+    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $scriptPath), '-GameDir', ('"{0}"' -f $Dir), '-PauseAtEnd', '-Confirmed')
+    if ($Mode -eq 'Uninstall') { $arguments += '-Uninstall' }
     if ($Yes) { $arguments += '-Yes' }
     if ($PackagePath) { $arguments += @('-PackagePath', ('"{0}"' -f [IO.Path]::GetFullPath($PackagePath))) }
     if ($ChecksumPath) { $arguments += @('-ChecksumPath', ('"{0}"' -f [IO.Path]::GetFullPath($ChecksumPath))) }
@@ -282,17 +275,6 @@ function Save-Download([string]$Url, [string]$Destination, [bool]$ShowProgress =
     } finally { $response.Close() }
 }
 
-function Get-ReleaseJson([string]$Repo) {
-    $request = [Net.HttpWebRequest]::Create("https://api.github.com/repos/$Repo/releases/latest")
-    $request.UserAgent = $UserAgent
-    $request.Accept = 'application/vnd.github+json'
-    $response = $request.GetResponse()
-    try {
-        $reader = New-Object IO.StreamReader($response.GetResponseStream(), [Text.Encoding]::UTF8)
-        try { return ($reader.ReadToEnd() | ConvertFrom-Json) } finally { $reader.Dispose() }
-    } finally { $response.Close() }
-}
-
 function Read-Checksums([string]$Path) {
     $table = @{}
     foreach ($line in [IO.File]::ReadAllLines($Path)) {
@@ -323,7 +305,7 @@ function Confirm-Checksum([string]$File, [string]$Expected, [string]$Name) {
 }
 
 # Downloads (or takes) the package and returns @{ Zip; Name; Version; Sha256 }.
-function Get-Package([string]$ChosenProduct, [string]$Work) {
+function Get-Package([string]$Work) {
     if ($PackagePath) {
         $zip = [IO.Path]::GetFullPath($PackagePath)
         if (-not (Test-Path -LiteralPath $zip -PathType Leaf)) { throw "Package not found: $zip" }
@@ -335,36 +317,20 @@ function Get-Package([string]$ChosenProduct, [string]$Work) {
         } else {
             Write-Warn 'No -ChecksumPath given; the local package is not verified.'
         }
-        $version = if ($name -match '-(\d[^-]*?)(?:-win32-full)?\.zip$') { $Matches[1] } else { 'local' }
+        $version = if ($name -match '-(\d[^-]*?)\.zip$') { $Matches[1] } else { 'local' }
         return @{ Zip = $zip; Name = $name; Version = $version; Sha256 = (Get-Sha256 $zip) }
     }
-    if ($ChosenProduct -eq 'Fixes') {
-        Write-Step 'Downloading the latest AOSPatches release'
-        $sums = Join-Path $Work 'SHA256SUMS'
-        Save-Download "$PatchesBase/SHA256SUMS" $sums $false
-        $table = Read-Checksums $sums
-        $version = 'latest'
-        foreach ($key in $table.Keys) { if ($key -match '^AOSPatches-(.+)\.zip$') { $version = $Matches[1] } }
-        Write-Info "Version: $version"
-        $zip = Join-Path $Work 'AOSPatches.zip'
-        Save-Download "$PatchesBase/AOSPatches.zip" $zip
-        Confirm-Checksum $zip $table['AOSPatches.zip'] 'AOSPatches.zip'
-        return @{ Zip = $zip; Name = "AOSPatches-$version.zip"; Version = $version; Sha256 = $table['AOSPatches.zip'] }
-    }
-    Write-Step 'Looking up the latest AoS Revival client release'
-    $release = Get-ReleaseJson $RevivalRepo
-    $asset = $release.assets | Where-Object { $_.name -like '*-win32-full.zip' } | Select-Object -First 1
-    $sumsAsset = $release.assets | Where-Object { $_.name -like '*SHA256SUMS*' } | Select-Object -First 1
-    if (-not $asset) { throw "The latest $RevivalRepo release has no *-win32-full.zip file." }
-    if (-not $sumsAsset) { throw "The latest $RevivalRepo release has no SHA256SUMS file; refusing to install unverified." }
-    Write-Info "Version: $($release.tag_name) ($($asset.name), $(Format-Size $asset.size))"
-    $sums = Join-Path $Work 'SHA256SUMS.txt'
-    Save-Download $sumsAsset.browser_download_url $sums $false
-    $zip = Join-Path $Work $asset.name
-    Save-Download $asset.browser_download_url $zip
-    $expected = (Read-Checksums $sums)[$asset.name]
-    Confirm-Checksum $zip $expected $asset.name
-    return @{ Zip = $zip; Name = $asset.name; Version = $release.tag_name; Sha256 = $expected }
+    Write-Step 'Downloading the latest AOSPatches release'
+    $sums = Join-Path $Work 'SHA256SUMS'
+    Save-Download "$PatchesBase/SHA256SUMS" $sums $false
+    $table = Read-Checksums $sums
+    $version = 'latest'
+    foreach ($key in $table.Keys) { if ($key -match '^AOSPatches-(.+)\.zip$') { $version = $Matches[1] } }
+    Write-Info "Version: $version"
+    $zip = Join-Path $Work 'AOSPatches.zip'
+    Save-Download "$PatchesBase/AOSPatches.zip" $zip
+    Confirm-Checksum $zip $table['AOSPatches.zip'] 'AOSPatches.zip'
+    return @{ Zip = $zip; Name = "AOSPatches-$version.zip"; Version = $version; Sha256 = $table['AOSPatches.zip'] }
 }
 
 # ---------------------------------------------------------------------------
@@ -497,7 +463,6 @@ function Invoke-Uninstall([string]$Dir) {
     if (-not $backup) {
         Write-Warn "No install made by this script was found in '$Dir'."
         Write-Info 'If you copied AOSPatches by hand, delete winmm.dll, the aos*fix*.py / aos_steam_bridge.py / aosfix_runtime.py files and the relay folder.'
-        Write-Info 'For the full AoS Revival client, use Steam: right-click Ace of Spades > Properties > Installed Files > Verify integrity of game files.'
         return $false
     }
     $manifest = Read-Manifest $backup
@@ -525,12 +490,12 @@ function Test-OurLoader([string]$Path) {
     return ($text.Contains('aosfix_runtime') -or $text.Contains('aos_mousefix_loader'))
 }
 
-function Invoke-Install([string]$Dir, [string]$ChosenProduct) {
-    $label = if ($ChosenProduct -eq 'Fixes') { 'AOSPatches' } else { 'AoS Revival client' }
+function Invoke-Install([string]$Dir) {
+    $label = 'AOSPatches'
     $work = Join-Path ([IO.Path]::GetTempPath()) ('AOSPatches-setup-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     try {
-        $package = Get-Package $ChosenProduct $work
+        $package = Get-Package $work
 
         Add-Type -AssemblyName System.IO.Compression
         Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -539,11 +504,8 @@ function Invoke-Install([string]$Dir, [string]$ChosenProduct) {
             $entries = @($archive.Entries | Where-Object { $_.FullName -and -not $_.FullName.EndsWith('/') })
             if (-not $entries.Count) { throw 'The package is empty.' }
             foreach ($entry in $entries) { [void](Get-SafeRelativePath $entry.FullName) }
-            if ($ChosenProduct -eq 'Fixes' -and -not ($entries | Where-Object { $_.FullName -eq 'winmm.dll' })) {
+            if (-not ($entries | Where-Object { $_.FullName -eq 'winmm.dll' })) {
                 throw 'This does not look like an AOSPatches package (no winmm.dll).'
-            }
-            if ($ChosenProduct -eq 'Revival' -and -not ($entries | Where-Object { $_.FullName -eq 'aos.pkg' })) {
-                throw 'This does not look like an AoS Revival client package (no aos.pkg).'
             }
 
             Write-Step 'Checking the game folder'
@@ -552,24 +514,21 @@ function Invoke-Install([string]$Dir, [string]$ChosenProduct) {
             if ($previous) {
                 $old = Read-Manifest $previous
                 Write-Info "Found an earlier install: $($old.Info['product']) $($old.Info['version']). It is removed first so its backup stays correct."
-                if (-not (Read-YesNo 'Remove the earlier install and continue?' $true)) { throw 'Cancelled.' }
                 if (-not (Invoke-Uninstall $Dir)) { throw 'The earlier install could not be removed cleanly; fix that first (see above).' }
             }
 
             $pkg = Join-Path $Dir 'aos.pkg'
-            if ($ChosenProduct -eq 'Fixes') {
-                if ((Test-Path -LiteralPath $pkg -PathType Leaf) -and (Get-Sha256 $pkg) -ne $RetailPkgSha) {
-                    Write-Warn 'Your aos.pkg is not the original Steam version, so AOSPatches will stay inactive.'
-                    Write-Info 'This happens after installing the full AoS Revival client or other mods. Steam can restore the original:'
-                    Write-Info 'Properties > Installed Files > Verify integrity of game files. Then run this installer again.'
-                    if (-not (Read-YesNo 'Install anyway?' $false)) { throw 'Cancelled: unsupported aos.pkg.' }
-                }
-                $loader = Join-Path $Dir 'winmm.dll'
-                if ((Test-Path -LiteralPath $loader -PathType Leaf) -and -not (Test-OurLoader $loader)) {
-                    Write-Warn 'Another mod already uses winmm.dll in the game folder. AOSPatches cannot run alongside it.'
-                    Write-Info 'If you continue, that file is backed up and -Uninstall puts it back.'
-                    if (-not (Read-YesNo 'Replace it with the AOSPatches loader?' $false)) { throw 'Cancelled: kept the other winmm.dll.' }
-                }
+            if ((Test-Path -LiteralPath $pkg -PathType Leaf) -and (Get-Sha256 $pkg) -ne $RetailPkgSha) {
+                Write-Warn 'Your aos.pkg is not the original Steam version, so AOSPatches will stay inactive.'
+                Write-Info 'This happens after installing other mods or a modified client. Steam can restore the original:'
+                Write-Info 'Properties > Installed Files > Verify integrity of game files. Then run this installer again.'
+                if (-not (Read-YesNo 'Install anyway?' $false)) { throw 'Cancelled: unsupported aos.pkg.' }
+            }
+            $loader = Join-Path $Dir 'winmm.dll'
+            if ((Test-Path -LiteralPath $loader -PathType Leaf) -and -not (Test-OurLoader $loader)) {
+                Write-Warn 'Another mod already uses winmm.dll in the game folder. AOSPatches cannot run alongside it.'
+                Write-Info 'If you continue, that file is backed up and -Uninstall puts it back.'
+                if (-not (Read-YesNo 'Replace it with the AOSPatches loader?' $false)) { throw 'Cancelled: kept the other winmm.dll.' }
             }
 
             # Space: the new files plus a backup of every file they replace.
@@ -680,38 +639,38 @@ function Invoke-Install([string]$Dir, [string]$ChosenProduct) {
 
     Write-Step 'All set'
     Write-Info 'Start Ace of Spades from Steam as usual.'
-    if ($ChosenProduct -eq 'Revival') {
-        Write-Info 'The AoS Revival launcher opens first and keeps itself up to date.'
-    } else {
-        Write-Info "Patch log: $(Join-Path $Dir 'aos_mousefix_loader.log')"
-    }
-    Write-Info 'To undo everything later, run this installer with -Uninstall:'
-    Write-Info "  & ([scriptblock]::Create((irm $InstallerUrl))) -Uninstall"
+    Write-Info "Patch log: $(Join-Path $Dir 'aos_mousefix_loader.log')"
+    Write-Info 'To undo everything later, run the installer again and choose U (Uninstall).'
 }
 
-function Select-Product {
-    if ($Product) { return $Product }
-    if ($Yes) { return 'Fixes' }
-    Write-Host ''
-    Write-Host '    What do you want to install?'
-    Write-Host '      [1] AOSPatches fixes only (recommended, under 1 MB)' -ForegroundColor White
-    Write-Host '          Small bug fixes for the original game: raw mouse input, DLC equipment menu,'
-    Write-Host '          smoother scrolling, jump fix and an experimental Steam relay browser.'
-    Write-Host '          The original game files stay untouched.'
-    Write-Host '      [2] Full AoS Revival client (about 380 MB download)' -ForegroundColor White
-    Write-Host '          Replaces the game client with the AoS Revival build: its own launcher,'
-    Write-Host '          the aosplay.net server list, accounts and automatic updates.'
-    Write-Host '      [U] Uninstall / restore the files from an earlier install'
-    Write-Host '      [Q] Quit'
-    while ($true) {
-        $answer = (Read-Host '    Choose 1, 2, U or Q').Trim().ToUpperInvariant()
-        switch ($answer) {
-            '1' { return 'Fixes' }
-            '2' { return 'Revival' }
-            'U' { return 'Uninstall' }
-            'Q' { return 'Quit' }
+# The one question: what to do with this folder. Returns Install, Uninstall or Quit.
+function Select-Action([string]$Dir) {
+    Write-Info "Game folder: $Dir"
+    $previous = Find-ActiveInstall $Dir
+    if ($previous) {
+        $old = Read-Manifest $previous
+        Write-Info "AOSPatches $($old.Info['version']) is already installed here (since $($old.Info['installed']))."
+        if ($Yes -or $Confirmed) { return 'Install' }
+        Write-Host ''
+        Write-Host '    [Enter] Update / reinstall the latest AOSPatches' -ForegroundColor White
+        Write-Host '    [U]     Uninstall and put the original files back'
+        Write-Host '    [Q]     Quit without changing anything'
+        while ($true) {
+            $answer = (Read-Host '    Your choice').Trim().ToUpperInvariant()
+            switch ($answer) {
+                '' { return 'Install' }
+                'Y' { return 'Install' }
+                'U' { return 'Uninstall' }
+                'Q' { return 'Quit' }
+                'N' { return 'Quit' }
+            }
         }
     }
+    Write-Info 'AOSPatches fixes the mouse, equipment menu, scrolling and jumping of the original game.'
+    Write-Info 'Original game files are backed up, every fix can be switched off, and you can uninstall anytime.'
+    if ($Confirmed) { return 'Install' }
+    if (Read-YesNo 'Install AOSPatches into this folder?' $true) { return 'Install' }
+    return 'Quit'
 }
 
 # ---------------------------------------------------------------------------
@@ -723,29 +682,37 @@ function Invoke-Main {
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'This installer only runs on Windows.' }
     Enable-Tls12
 
-    $choice = if ($Uninstall) { 'Uninstall' } else { Select-Product }
-    if ($choice -eq 'Quit') { Write-Info 'Nothing was changed.'; return }
-
+    if (-not $GameDir -and $env:AOSPATCHES_GAMEDIR) { $script:GameDir = $env:AOSPATCHES_GAMEDIR }
     $dir = Resolve-GameDir
+    $choice = if ($Uninstall) { 'Uninstall' } else { Select-Action $dir }
+    if ($choice -eq 'Quit') { throw 'Cancelled: nothing was changed.' }
+
     if (-not (Test-Writable $dir)) {
         if (Request-Elevation $dir $choice) { return }
     }
     if ($choice -eq 'Uninstall') {
         if (-not (Invoke-Uninstall $dir)) { throw 'Uninstall did not complete; see the messages above.' }
     } else {
-        Invoke-Install $dir $choice
+        Invoke-Install $dir
     }
 }
 
-$failed = $false
+# Exit codes when run as a file: 0 done, 1 failed, 2 cancelled (nothing changed).
+$exitCode = 0
 try {
     Invoke-Main
 } catch {
-    $failed = $true
+    $message = $_.Exception.Message
     Write-Host ''
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host 'Nothing else was changed. Ask for help at https://github.com/KikoTs/AOSPatches/issues' -ForegroundColor Red
+    if ($message -like 'Cancelled*') {
+        $exitCode = 2
+        Write-Host $message -ForegroundColor Yellow
+    } else {
+        $exitCode = 1
+        Write-Host "ERROR: $message" -ForegroundColor Red
+        Write-Host 'Nothing else was changed. Ask for help at https://github.com/KikoTs/AOSPatches/issues' -ForegroundColor Red
+    }
 }
 if ($PauseAtEnd) { [void](Read-Host 'Press Enter to close this window') }
 # Only set an exit code when run as a file; "irm | iex" must not close the window.
-if ($PSCommandPath -and $failed) { exit 1 }
+if ($PSCommandPath -and $exitCode) { exit $exitCode }

@@ -77,7 +77,9 @@ jobs:
             $notes.Add($lines[$i])
           }
           $notes.AddRange([string[]]@(
-            '', '### Install', '', 'Close the game, open PowerShell and run:', '',
+            '', '### Install', '',
+            'Easiest: download [`AOSPatches-Installer.cmd`](https://github.com/KikoTs/AOSPatches/releases/latest/download/AOSPatches-Installer.cmd) and double-click it. If Windows warns about a downloaded file, choose **More info** > **Run anyway**.', '',
+            'Or, in PowerShell:', '',
             '```powershell',
             'irm https://github.com/KikoTs/AOSPatches/releases/latest/download/install.ps1 | iex',
             '```', '',
@@ -90,7 +92,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = $env:TAG -replace '^v', ''
-          $assets = @("out/AOSPatches-$version.zip", 'out/AOSPatches.zip', 'out/install.ps1', 'out/SHA256SUMS')
+          $assets = @("out/AOSPatches-$version.zip", 'out/AOSPatches.zip', 'out/install.ps1', 'out/AOSPatches-Installer.cmd', 'out/SHA256SUMS')
           $prerelease = if ($version -match '-') { @('--prerelease') } else { @() }
           gh release view $env:TAG *> $null
           if ($LASTEXITCODE -eq 0) {
