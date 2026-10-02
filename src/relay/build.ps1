@@ -22,10 +22,11 @@ $testDefine = if ($TestLoopback) { '/DAOS_RELAY_LOOPBACK_TEST' } else { '' }
 $executable = if ($TestLoopback) { 'aos-retail-relay-test.exe' } else { 'aos-retail-relay.exe' }
 $content = @"
 @echo off
-call "$devcmd" -no_logo -arch=x64 -host_arch=x64
+rem VsDevCmd can print harmless lookup noise on stderr; failures still set errorlevel.
+call "$devcmd" -no_logo -arch=x64 -host_arch=x64 2>nul
 if errorlevel 1 exit /b %errorlevel%
 cd /d "$build"
-cl /nologo /MT /O2 /W4 /WX /EHsc /std:c++17 /D_CRT_SECURE_NO_WARNINGS /DWIN32_LEAN_AND_MEAN /DNOMINMAX $testDefine /I"$SteamSdk/public" "$PSScriptRoot/retail_relay.cpp" /link "$SteamSdk/redistributable_bin/win64/steam_api64.lib" ws2_32.lib /OUT:"$OutputDirectory/$executable" /DYNAMICBASE /NXCOMPAT
+cl /nologo /Brepro /MT /O2 /W4 /WX /EHsc /std:c++17 /D_CRT_SECURE_NO_WARNINGS /DWIN32_LEAN_AND_MEAN /DNOMINMAX $testDefine /I"$SteamSdk/public" "$PSScriptRoot/retail_relay.cpp" /link "$SteamSdk/redistributable_bin/win64/steam_api64.lib" ws2_32.lib /OUT:"$OutputDirectory/$executable" /DYNAMICBASE /NXCOMPAT /Brepro
 exit /b %errorlevel%
 "@
 $script = Join-Path $build 'compile.cmd'

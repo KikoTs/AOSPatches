@@ -5,15 +5,33 @@ PowerShell 5.1+, Visual Studio's C++ x86/x64 tools and a Windows SDK. The full
 relay build additionally needs a separately obtained Steamworks SDK:
 
 ```powershell
-.\build.ps1 -SteamSdk C:\path\steamworks_sdk
+.\build.ps1 -SteamSdk C:\path\steamworks_sdk -Version 1.0.0
 ```
 
 `build.ps1 -FixesOnly` requires no Steamworks SDK. Each build stages its output
 under ignored `build/`, then replaces only this repository's `dist/` after
-compilation succeeds. `AOSPatches.zip` contains exactly the runtime files in
-`dist/`, at the ZIP root. There is no extra directory to strip on installation.
-Both `dist/` and the ZIP are checked in for direct download; commit their
-matching source and build changes together when updating them.
+compilation succeeds, and runs `package.ps1 -Version <version>`. That writes
+the release assets to ignored `out/`:
+
+| File | Contents |
+| --- | --- |
+| `AOSPatches-<version>.zip` | exactly the runtime files in `dist/`, at the ZIP root |
+| `AOSPatches.zip` | the same bytes, for the stable `releases/latest/download/AOSPatches.zip` link |
+| `install.ps1` | the installer from the repository root |
+| `SHA256SUMS` | SHA-256 of the three files above |
+
+`dist/`, `out/` and the ZIPs are build output and are not committed; releases
+publish them. `package.ps1` refuses a `dist/` with missing or unexpected files,
+and checks every ZIP entry against `dist/` byte for byte.
+
+Builds are deterministic: the compiler and linker run with `/Brepro`, and ZIP
+entries have a fixed order and the commit's timestamp (or `SOURCE_DATE_EPOCH`).
+The same source revision, toolchain and SDK give the same bytes. The release
+workflow uses the Steamworks SDK archive pinned by the BattleSpades C++ client
+(`rlabrecque/SteamworksSDK` at `df2baab`, SHA-256
+`4df87731a1179f20a9253a4348f6bd8381a8e46e5e3dc58f9db705ef200eea61`), extracted
+with its top-level folder stripped. Its `steam_api64.dll` is identical to the
+one shipped in earlier builds.
 
 The loader is x86 and the relay helper is x64. Both use `/MT /W4 /WX`; compiler
 objects, generated headers, import libraries and scripts stay out of `dist/`.
@@ -43,6 +61,8 @@ With Steam signed in to an account that owns AppID 224540:
 py -3 src/relay/smoke.py dist/relay/aos-retail-relay.exe
 ```
 
+Run these after `build.ps1`, which leaves the runtime files in `dist/`.
+
 This verifies initialization and relay availability, not a remote connection.
 The optional local native transport test uses a separately named executable:
 
@@ -55,6 +75,14 @@ The full loopback test also needs a compatible `enet` Python extension
 (pyenet), installed separately or exposed through `PYTHONPATH` from a compatible
 BattleSpades build. That test dependency is not needed to build or use the
 patches. No helper test binary is packaged in `dist/`.
+
+## Releases
+
+Add the version's section to `CHANGELOG.md`, then push a `v*` tag. The
+[release workflow](../.github/workflows/release.yml) builds on GitHub's Windows
+runners with Windows PowerShell 5.1 and publishes the four files above, using
+the changelog section as the release notes. It can be re-run for an existing tag
+from the Actions tab; a re-run replaces that release's assets.
 
 ## Evidence
 

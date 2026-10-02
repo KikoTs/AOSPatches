@@ -9,7 +9,8 @@ running, signed-in Steam account that owns AoS are required. Retail remains
 
 ## Install and host
 
-Close retail, then extract **AOSPatches.zip** beside `aos.exe`.
+Close retail, then run the installer or extract **AOSPatches.zip** beside
+`aos.exe` (see the [README](../README.md#install)).
 Keep the `relay` subfolder intact. It contains `aos-retail-relay.exe` and its
 own `steam_api64.dll`. Never put that DLL over retail's original Steam DLL.
 Launch the game through Steam normally. Relay entries are prefixed `[Steam]`.
@@ -21,12 +22,13 @@ advertised. Refresh again after a server or Steam restarts.
 On the hosting PC, run the updated BattleSpades source with:
 
 ```powershell
-py -3.12 run_server.py --steam-p2p --steam-p2p-bridge "C:\path\AOSPatches\dist\relay\aos-retail-relay.exe"
+py -3.12 run_server.py --steam-p2p --steam-p2p-bridge "C:\path\AOSPatches\relay\aos-retail-relay.exe"
 ```
 
 From an updated BattleSpades checkout, pass `--steam-p2p-bridge` pointing to
-`AOSPatches/dist/relay/aos-retail-relay.exe` as shown below. For a portable
-server build, copy `dist/relay` beside the server EXE. The hosting integration
+`relay/aos-retail-relay.exe` from the release ZIP (or `dist/relay/` of your own
+build). For a portable server build, copy that `relay` folder beside the server
+EXE. The hosting integration
 and server source remain in the separate BattleSpades repository. The original C++ client and its
 bundled server were not modified or rebuilt by this feature. Older server
 executables need rebuilding from the updated server source before these CLI

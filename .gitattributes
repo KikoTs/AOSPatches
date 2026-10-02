@@ -11,4 +11,3 @@ LICENSE text eol=lf
 *.dll binary
 *.exe binary
 *.zip binary
-/dist/** linguist-generated=true

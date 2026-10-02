@@ -1,0 +1,104 @@
+# Build AOSPatches from source and publish a GitHub release.
+# Runs when a v* tag is pushed, or by hand from the Actions tab for an existing tag.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and publish, e.g. v1.0.0
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      # The same pinned Steamworks SDK archive the BattleSpades C++ client uses.
+      STEAMWORKS_URL: https://github.com/rlabrecque/SteamworksSDK/archive/df2baabf574a738ef1ea90a7e89339107fc0a279.tar.gz
+      STEAMWORKS_SHA256: 4df87731a1179f20a9253a4348f6bd8381a8e46e5e3dc58f9db705ef200eea61
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - name: Fetch the Steamworks SDK
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri $env:STEAMWORKS_URL -OutFile "$env:RUNNER_TEMP\steamworks.tar.gz"
+          $hash = (Get-FileHash "$env:RUNNER_TEMP\steamworks.tar.gz" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne $env:STEAMWORKS_SHA256) { throw "Steamworks SDK archive hash mismatch: $hash" }
+          $sdk = Join-Path $env:RUNNER_TEMP 'steamworks_sdk'
+          New-Item -ItemType Directory -Path $sdk -Force | Out-Null
+          tar -xzf "$env:RUNNER_TEMP\steamworks.tar.gz" -C $sdk --strip-components=1
+          if ($LASTEXITCODE -ne 0) { throw 'Could not extract the Steamworks SDK.' }
+          "STEAMWORKS_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build and package
+        # Windows PowerShell 5.1, the same shell players run install.ps1 with.
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:TAG -replace '^v', ''
+          .\build.ps1 -SteamSdk $env:STEAMWORKS_SDK -Version $version
+          Get-ChildItem out | Format-Table Name, Length -AutoSize
+
+      - name: Check the installer script parses
+        shell: powershell
+        run: |
+          $errors = $null
+          [void][Management.Automation.Language.Parser]::ParseFile("$PWD\install.ps1", [ref]$null, [ref]$errors)
+          if ($errors) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+
+      - name: Extract release notes from CHANGELOG.md
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:TAG -replace '^v', ''
+          $lines = [IO.File]::ReadAllLines("$PWD\CHANGELOG.md")
+          $start = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match ('^## \[' + [regex]::Escape($version) + '\]')) { $start = $i; break }
+          }
+          if ($start -lt 0) { throw "CHANGELOG.md has no section for $version." }
+          $notes = New-Object System.Collections.Generic.List[string]
+          for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^## \[' -or $lines[$i] -match '^\[[^\]]+\]:\s') { break }
+            $notes.Add($lines[$i])
+          }
+          $notes.AddRange([string[]]@(
+            '', '### Install', '', 'Close the game, open PowerShell and run:', '',
+            '```powershell',
+            'irm https://github.com/KikoTs/AOSPatches/releases/latest/download/install.ps1 | iex',
+            '```', '',
+            'Or extract `AOSPatches.zip` beside `aos.exe` (Steam > Manage > Browse local files). Check downloads against `SHA256SUMS`.'))
+          [IO.File]::WriteAllText((Join-Path $env:RUNNER_TEMP 'notes.md'), ($notes -join "`n").Trim() + "`n", (New-Object Text.UTF8Encoding $false))
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:TAG -replace '^v', ''
+          $assets = @("out/AOSPatches-$version.zip", 'out/AOSPatches.zip', 'out/install.ps1', 'out/SHA256SUMS')
+          $prerelease = if ($version -match '-') { @('--prerelease') } else { @() }
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG @assets --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Asset upload failed.' }
+            gh release edit $env:TAG --title "AOSPatches $version" --notes-file "$env:RUNNER_TEMP\notes.md"
+          } else {
+            gh release create $env:TAG @assets --verify-tag --title "AOSPatches $version" --notes-file "$env:RUNNER_TEMP\notes.md" @prerelease
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Publishing the release failed.' }
+          Get-Content out/SHA256SUMS

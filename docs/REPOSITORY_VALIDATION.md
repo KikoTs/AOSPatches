@@ -30,5 +30,22 @@ No original game files or C++ client files were modified. BattleSpades keeps
 its server implementation and existing patch source; this is an independent
 copy with its own Git repository and build scripts.
 
+## Release packaging - 2026-10-02 (v1.0.0)
+
+- Build output (`dist/`, `AOSPatches.zip`) removed from the repository; releases
+  publish it instead. `build.ps1`/`package.ps1` build it from source alone.
+- Two consecutive full builds produced byte-identical `winmm.dll`,
+  `aos-retail-relay.exe` and ZIP (`/Brepro`, fixed ZIP order and timestamps).
+- 59 fix, 18 movement and 20 networking tests pass under Python 2.7 x86 against
+  the installed retail bundle; the rebuilt loader passes the 10,000-call WinMM
+  smoke test.
+- `install.ps1` was tested on Windows PowerShell 5.1 against a copy of the game
+  in a folder whose path has spaces and Cyrillic letters: a fixes-only install
+  over an earlier manual install, a clean install, and the full AoS Revival
+  0.1.12 client (1,289 added, 16 replaced, 3,736 identical files). After each
+  `-Uninstall`, every file and folder of the copy matched the pre-install
+  snapshot byte for byte. An unwritable folder is detected and elevation is
+  only offered, never forced.
+
 Two-account Internet SDR gameplay and full retail UI validation remain
 outstanding as described in [NETWORK_VALIDATION.md](NETWORK_VALIDATION.md).

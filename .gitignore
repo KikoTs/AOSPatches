@@ -1,4 +1,8 @@
+# Build output: produced by build.ps1 / package.ps1, published as release assets
 /build/
+/dist/
+/out/
+/AOSPatches.zip
 __pycache__/
 *.py[cod]
 *.log

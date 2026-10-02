@@ -18,10 +18,11 @@ $devcmd = Join-Path $vs 'Common7/Tools/VsDevCmd.bat'
 $buildCmd = Join-Path $build 'compile.cmd'
 $content = @"
 @echo off
-call "$devcmd" -no_logo -arch=x86 -host_arch=x64
+rem VsDevCmd can print harmless lookup noise on stderr; failures still set errorlevel.
+call "$devcmd" -no_logo -arch=x86 -host_arch=x64 2>nul
 if errorlevel 1 exit /b %errorlevel%
 cd /d "$build"
-cl /nologo /LD /MT /O2 /W4 /WX /EHsc /std:c++17 /I"$build" /I"$PSScriptRoot" "$PSScriptRoot/loader.cpp" /link /DEF:"$PSScriptRoot/winmm.def" /OUT:"$OutputDirectory/winmm.dll" /IMPLIB:"$build/winmm.lib" /DYNAMICBASE /NXCOMPAT /MACHINE:X86
+cl /nologo /Brepro /LD /MT /O2 /W4 /WX /EHsc /std:c++17 /I"$build" /I"$PSScriptRoot" "$PSScriptRoot/loader.cpp" /link /DEF:"$PSScriptRoot/winmm.def" /OUT:"$OutputDirectory/winmm.dll" /IMPLIB:"$build/winmm.lib" /DYNAMICBASE /NXCOMPAT /MACHINE:X86 /Brepro
 exit /b %errorlevel%
 "@
 [IO.File]::WriteAllText($buildCmd, $content, [Text.ASCIIEncoding]::new())

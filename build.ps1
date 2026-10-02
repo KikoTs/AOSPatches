@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (c) 2026 Kiril Tsanov (KikoTs)
+# Build the runtime files into dist/, then package the release assets into out/.
 [CmdletBinding()]
 param(
     [string]$SteamSdk = $env:STEAMWORKS_SDK,
+    [string]$Version = 'dev',
     [switch]$FixesOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -26,11 +28,17 @@ if (-not $FixesOnly) {
 foreach ($name in $scripts) {
     Copy-Item -LiteralPath (Join-Path $root "src/retail/$name") -Destination (Join-Path $stage $name)
 }
+# Name the exact source revision in the shipped notices.
+$revision = $null
+try { $revision = (& git -C $root rev-parse HEAD 2>$null) } catch { $revision = $null }
+if (-not $revision) { $revision = $env:GITHUB_SHA }
+if (-not $revision) { $revision = 'main' }
 # Keep the runtime ZIP self-contained for licensing without extra install files.
 # These inert UTF-8 comments include the full license, permissions and notices.
 $runtime = Join-Path $stage 'aosfix_runtime.py'
 $contents = "# -*- coding: utf-8 -*-`n" + [IO.File]::ReadAllText($runtime)
-$contents += "`n# BEGIN AOSPATCHES DISTRIBUTION NOTICES`n# Corresponding source: https://github.com/KikoTs/AOSPatches`n"
+$contents += "`n# BEGIN AOSPATCHES DISTRIBUTION NOTICES`n# AOSPatches version: $Version`n"
+$contents += "# Corresponding source: https://github.com/KikoTs/AOSPatches/tree/$revision`n"
 foreach ($name in @('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/LICENSE-Revival.txt')) {
     $contents += "# --- $name ---`n"
     foreach ($line in ([IO.File]::ReadAllText((Join-Path $root $name)) -split '\r?\n')) {
@@ -38,7 +46,7 @@ foreach ($name in @('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licens
     }
 }
 $contents += "# END AOSPATCHES DISTRIBUTION NOTICES`n"
-[IO.File]::WriteAllText($runtime, $contents, [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($runtime, $contents, (New-Object Text.UTF8Encoding $false))
 # Compile products stay in build/. Replace only this repository's own dist/.
 $dist = Join-Path $root 'dist'
 if (Test-Path -LiteralPath $dist) {
@@ -51,5 +59,5 @@ if (Test-Path -LiteralPath $dist) {
     Remove-Item -LiteralPath $dist -Recurse -Force
 }
 Move-Item -LiteralPath $stage -Destination $dist
-& (Join-Path $root 'package.ps1')
-Write-Output 'Ready: dist/ contains only the drag-and-drop runtime files; AOSPatches.zip contains the same files.'
+& (Join-Path $root 'package.ps1') -Version $Version
+Write-Output 'Ready: dist/ holds the drag-and-drop runtime files; out/ holds the release assets.'

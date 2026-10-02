@@ -42,7 +42,7 @@ SOFTWARE.
 
 ## Valve Steamworks runtime
 
-`dist/relay/steam_api64.dll` is the unmodified x64 Steamworks redistributable.
+`relay/steam_api64.dll` in the release ZIP is the unmodified x64 Steamworks redistributable.
 Copyright Valve Corporation. All rights reserved. This file is subject to
 Valve's Steamworks SDK terms, not the AGPL. The project license and additional
 permission do not replace those terms. The proprietary SDK source, headers,
