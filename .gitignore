@@ -1,0 +1,12 @@
+/build/
+__pycache__/
+*.py[cod]
+*.log
+*.obj
+*.pdb
+*.exp
+*.lib
+.env
+.env.*
+/steamworks_sdk/
+/sdk/
